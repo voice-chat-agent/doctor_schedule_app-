@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head><title>Doctor Schedule</title></head>
+<body>
+  <h1>Schedule for Dr. {{ doctor["name"] }} ({{ doctor["specialty"] }})</h1>
+  <form action="/doctor/{{ doctor['doctor_id'] }}/schedule" method="post">
+    <label>Date: <input type="date" name="date" required></label><br>
+    <label>Time Slot (e.g., 09:00-09:30): <input type="text" name="slot" required></label><br>
+    <label>Available: 
+      <select name="available">
+        <option value="true">True</option>
+        <option value="false">False</option>
+      </select>
+    </label><br>
+    <button type="submit">Add/Update Time Slot</button>
+  </form>
+  <h2>Existing Time Slots</h2>
+  <ul>
+  {% for ts in schedule %}
+    <li>
+      {{ ts['date'] }} - {{ ts['slot'] }} : {{ ts['available'] }}
+      <form action="/doctor/{{ doctor['doctor_id'] }}/schedule/delete" method="post" style="display:inline;">
+        <input type="hidden" name="date" value="{{ ts['date'] }}">
+        <input type="hidden" name="slot" value="{{ ts['slot'] }}">
+        <button type="submit">Delete</button>
+      </form>
+      <form action="/doctor/{{ doctor['doctor_id'] }}/schedule/toggle" method="post" style="display:inline;">
+        <input type="hidden" name="date" value="{{ ts['date'] }}">
+        <input type="hidden" name="slot" value="{{ ts['slot'] }}">
+        <input type="hidden" name="available" value="{{ not ts['available'] }}">
+        <button type="submit">
+          Mark as {{ "available" if not ts['available'] else "not available" }}
+        </button>
+      </form>
+    </li>
+  {% endfor %}
+  </ul>
+</body>
+</html>
