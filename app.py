@@ -102,3 +102,14 @@ async def toggle_availability(
     )
     return RedirectResponse(url=f"/doctor/{doctor_id}/schedule", status_code=303)
     
+@app.get("/doctor/login", response_class=HTMLResponse)
+async def doctor_login_form(request: Request):
+    return templates.TemplateResponse("doctor_login.html", {"request": request})
+
+@app.post("/doctor/login")
+async def doctor_login(name: str = Form(...)):
+    doctor = await doctors_collection.find_one({"name": name})
+    if doctor is None:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+    doctor_id = doctor["doctor_id"]
+    return RedirectResponse(url=f"/doctor/{doctor_id}/schedule", status_code=303)
