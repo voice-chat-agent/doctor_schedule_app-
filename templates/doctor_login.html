@@ -1,11 +1,16 @@
 <!DOCTYPE html>
 <html>
-<head><title>Doctor Login</title></head>
+<head>
+  <title>Doctor Login</title>
+</head>
 <body>
   <h1>Doctor Login</h1>
   <form action="/doctor/login" method="post">
     <label>Name: <input type="text" name="name" required></label><br>
     <button type="submit">Login</button>
   </form>
+  {% if error %}
+    <p style="color: red;">{{ error }}</p>
+  {% endif %}
 </body>
 </html>

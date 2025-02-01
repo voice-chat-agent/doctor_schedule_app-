@@ -1,39 +1,67 @@
 <!DOCTYPE html>
 <html>
-<head><title>Doctor Schedule</title></head>
+<head>
+  <title>Doctor Schedule</title>
+  <style>
+    .slot-card {
+      display: inline-block;
+      border: 1px solid #333;
+      padding: 10px;
+      margin: 5px;
+      width: 120px;
+      text-align: center;
+      border-radius: 5px;
+    }
+    .available {
+      background-color: #d4edda;
+    }
+    .not-available {
+      background-color: #f8d7da;
+    }
+  </style>
+</head>
 <body>
   <h1>Schedule for Dr. {{ doctor["name"] }} ({{ doctor["specialty"] }})</h1>
-  <form action="/doctor/{{ doctor['doctor_id'] }}/schedule" method="post">
-    <label>Date: <input type="date" name="date" required></label><br>
-    <label>Time Slot (e.g., 09:00-09:30): <input type="text" name="slot" required></label><br>
-    <label>Available: 
-      <select name="available">
-        <option value="true">True</option>
-        <option value="false">False</option>
-      </select>
-    </label><br>
-    <button type="submit">Add/Update Time Slot</button>
-  </form>
-  <h2>Existing Time Slots</h2>
+  
+  <h2>Doctor Details</h2>
   <ul>
-  {% for ts in schedule %}
-    <li>
-      {{ ts['date'] }} - {{ ts['slot'] }} : {{ ts['available'] }}
-      <form action="/doctor/{{ doctor['doctor_id'] }}/schedule/delete" method="post" style="display:inline;">
-        <input type="hidden" name="date" value="{{ ts['date'] }}">
-        <input type="hidden" name="slot" value="{{ ts['slot'] }}">
-        <button type="submit">Delete</button>
-      </form>
-      <form action="/doctor/{{ doctor['doctor_id'] }}/schedule/toggle" method="post" style="display:inline;">
-        <input type="hidden" name="date" value="{{ ts['date'] }}">
-        <input type="hidden" name="slot" value="{{ ts['slot'] }}">
-        <input type="hidden" name="available" value="{{ not ts['available'] }}">
-        <button type="submit">
-          Mark as {{ "available" if not ts['available'] else "not available" }}
-        </button>
-      </form>
-    </li>
-  {% endfor %}
+    <li><strong>About:</strong> {{ doctor["about"] }}</li>
+    <li><strong>Clinic Interests:</strong> {{ doctor["clinic_interests"] }}</li>
+    <li><strong>Education:</strong> {{ doctor["education"] }}</li>
+    <li><strong>Personal Interests:</strong> {{ doctor["personal_interests"] }}</li>
+  </ul>
+  
+  <h2>Schedule for {{ day|capitalize }}</h2>
+  <!-- Dropdown to switch between weekdays -->
+  <form method="get" action="/doctor/{{ doctor['doctor_id'] }}/schedule">
+    <label for="day">Select Day:</label>
+    <select name="day" id="day">
+      <option value="monday" {% if day == 'monday' %}selected{% endif %}>Monday</option>
+      <option value="tuesday" {% if day == 'tuesday' %}selected{% endif %}>Tuesday</option>
+      <option value="wednesday" {% if day == 'wednesday' %}selected{% endif %}>Wednesday</option>
+      <option value="thursday" {% if day == 'thursday' %}selected{% endif %}>Thursday</option>
+      <option value="friday" {% if day == 'friday' %}selected{% endif %}>Friday</option>
+      <option value="saturday" {% if day == 'saturday' %}selected{% endif %}>Saturday</option>
+      <option value="sunday" {% if day == 'sunday' %}selected{% endif %}>Sunday</option>
+    </select>
+    <button type="submit">View</button>
+  </form>
+
+  <h3>Time Slots</h3>
+  <ul style="list-style: none; padding: 0;">
+    {% for ts in schedule %}
+      <li class="slot-card {{ 'available' if ts['available'] else 'not-available' }}">
+        <p><strong>{{ ts['slot'] }}</strong></p>
+        <p>Status: {{ "Available" if ts['available'] else "Not available" }}</p>
+        <form action="/doctor/{{ doctor['doctor_id'] }}/schedule/toggle" method="post">
+          <!-- Include the selected day so the toggle works for the correct weekday -->
+          <input type="hidden" name="day" value="{{ day }}">
+          <input type="hidden" name="slot" value="{{ ts['slot'] }}">
+          <input type="hidden" name="available" value="{{ 'false' if ts['available'] else 'true' }}">
+          <button type="submit">Toggle</button>
+        </form>
+      </li>
+    {% endfor %}
   </ul>
 </body>
 </html>

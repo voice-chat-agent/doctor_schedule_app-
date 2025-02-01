@@ -1,4 +1,6 @@
 import os
+from datetime import datetime, timedelta, time, date
+
 from fastapi import FastAPI, Request, Form, HTTPException
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -14,7 +16,31 @@ templates = Jinja2Templates(directory="templates")
 
 db = get_db()
 doctors_collection = db["doctors"]
+# Each doctor’s schedule document will store a weekly template.
 schedules_collection = db["schedules"]
+
+def get_default_slots():
+    """
+    Generate the default 30‑minute slots from 09:00 to 21:00.
+    (No date is stored here; only the time slots and their availability.)
+    """
+    default_slots = []
+    start = datetime.combine(date.today(), time(hour=9, minute=0))
+    end = datetime.combine(date.today(), time(hour=21, minute=0))
+    while start < end:
+        slot_end = start + timedelta(minutes=30)
+        slot_str = f"{start.strftime('%H:%M')}-{slot_end.strftime('%H:%M')}"
+        default_slots.append({"slot": slot_str, "available": True})
+        start = slot_end
+    return default_slots
+
+def get_default_week_schedule():
+    """Create a default schedule for every day of the week."""
+    days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    week_schedule = {}
+    for day in days:
+        week_schedule[day] = get_default_slots()
+    return week_schedule
 
 @app.get("/", response_class=HTMLResponse)
 async def home(request: Request):
@@ -25,91 +51,101 @@ async def doctor_registration_form(request: Request):
     return templates.TemplateResponse("doctor_registration.html", {"request": request})
 
 @app.post("/register", response_class=HTMLResponse)
-async def register_doctor(request: Request, name: str = Form(...), specialty: str = Form(...), languages: str = Form(...)):
+async def register_doctor(
+    request: Request,
+    name: str = Form(...),
+    specialty: str = Form(...),
+    languages: str = Form(...),
+    about: str = Form(...),
+    clinic_interests: str = Form(...),
+    education: str = Form(...),
+    personal_interests: str = Form(...)
+):
     languages_list = [lang.strip() for lang in languages.split(",")]
     doctor_count = await doctors_collection.count_documents({})
     doctor_id = doctor_count + 1
     doctor = {
         "tenant_id": "global",
         "doctor_id": doctor_id,
-        "name": name,
+        "name": name.strip(),
         "specialty": specialty,
-        "languages": languages_list
+        "languages": languages_list,
+        "about": about,
+        "clinic_interests": clinic_interests,
+        "education": education,
+        "personal_interests": personal_interests
     }
     await doctors_collection.insert_one(doctor)
-    schedule_doc = {
-        "doctor_id": doctor_id,
-        "tenant_id": "global",
-        "time_slots": []
-    }
+    # Create and store the default weekly schedule for this doctor.
+    default_schedule = get_default_week_schedule()
+    schedule_doc = {"doctor_id": doctor_id, "week_schedule": default_schedule}
     await schedules_collection.insert_one(schedule_doc)
-    return HTMLResponse(f"Doctor {name} registered with ID {doctor_id}. <a href='/doctor/{doctor_id}/schedule'>Manage Schedule</a>")
+    return HTMLResponse(
+        f"Doctor {name} registered with ID {doctor_id}. "
+        f"<a href='/doctor/{doctor_id}/schedule'>Manage Schedule</a>"
+    )
 
 @app.get("/doctor/{doctor_id}/schedule", response_class=HTMLResponse)
-async def doctor_schedule_page(request: Request, doctor_id: int):
+async def doctor_schedule_page(request: Request, doctor_id: int, day: str = None):
+    # Default to the current weekday if none is provided.
+    if day is None:
+        day = date.today().strftime('%A').lower()  # e.g., "monday"
+    else:
+        day = day.lower()
+
+    valid_days = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+    if day not in valid_days:
+        day = "monday"  # fallback
+
     doctor = await doctors_collection.find_one({"doctor_id": doctor_id})
     if not doctor:
         raise HTTPException(status_code=404, detail="Doctor not found")
+
     schedule_doc = await schedules_collection.find_one({"doctor_id": doctor_id})
-    time_slots = schedule_doc.get("time_slots", []) if schedule_doc else []
-    return templates.TemplateResponse("doctor_schedule.html", {"request": request, "doctor": doctor, "schedule": time_slots})
+    if not schedule_doc:
+        # In case the schedule document is missing, create one.
+        default_schedule = get_default_week_schedule()
+        schedule_doc = {"doctor_id": doctor_id, "week_schedule": default_schedule}
+        await schedules_collection.insert_one(schedule_doc)
 
-@app.post("/doctor/{doctor_id}/schedule", response_class=HTMLResponse)
-async def update_doctor_schedule(
-    request: Request,
-    doctor_id: int,
-    date: str = Form(...),
-    slot: str = Form(...),
-    available: str = Form(...)
-):
-    available_bool = True if available.lower() == "true" else False
-    new_slot = {
-        "date": date,
-        "slot": slot,
-        "available": available_bool
-    }
-    await schedules_collection.update_one(
-        {"doctor_id": doctor_id},
-        {"$push": {"time_slots": new_slot}}
-    )
-    return RedirectResponse(url=f"/doctor/{doctor_id}/schedule", status_code=303)
-
-@app.post("/doctor/{doctor_id}/schedule/delete", response_class=HTMLResponse)
-async def delete_time_slot(
-    request: Request,
-    doctor_id: int,
-    date: str = Form(...),
-    slot: str = Form(...)
-):
-    await schedules_collection.update_one(
-        {"doctor_id": doctor_id},
-        {"$pull": {"time_slots": {"date": date, "slot": slot}}}
-    )
-    return RedirectResponse(url=f"/doctor/{doctor_id}/schedule", status_code=303)
+    day_schedule = schedule_doc.get("week_schedule", {}).get(day, get_default_slots())
+    return templates.TemplateResponse("doctor_schedule.html", {
+        "request": request,
+        "doctor": doctor,
+        "schedule": day_schedule,
+        "day": day
+    })
 
 @app.post("/doctor/{doctor_id}/schedule/toggle", response_class=HTMLResponse)
 async def toggle_availability(
     request: Request,
     doctor_id: int,
-    date: str = Form(...),
+    day: str = Form(...),
     slot: str = Form(...),
     available: str = Form(...)
 ):
-    available_bool = True if available.lower() == "true" else False
-    await schedules_collection.update_one(
-        {"doctor_id": doctor_id, "time_slots": {"$elemMatch": {"date": date, "slot": slot}}},
-        {"$set": {"time_slots.$.available": available_bool}}
+    available_bool = available.lower() == "true"
+    day = day.lower()
+    # Update the specific slot in the day’s schedule.
+    result = await schedules_collection.update_one(
+        {"doctor_id": doctor_id, f"week_schedule.{day}.slot": slot},
+        {"$set": {f"week_schedule.{day}.$.available": available_bool}}
     )
-    return RedirectResponse(url=f"/doctor/{doctor_id}/schedule", status_code=303)
-    
+    if result.modified_count == 0:
+        raise HTTPException(status_code=404, detail="Time slot not found or not updated")
+    return RedirectResponse(url=f"/doctor/{doctor_id}/schedule?day={day}", status_code=303)
+
 @app.get("/doctor/login", response_class=HTMLResponse)
 async def doctor_login_form(request: Request):
-    return templates.TemplateResponse("doctor_login.html", {"request": request})
+    return templates.TemplateResponse("doctor_login.html", {"request": request, "error": ""})
 
-@app.post("/doctor/login")
-async def doctor_login(name: str = Form(...)):
-    doctor = await doctors_collection.find_one({"name": name})
+@app.post("/doctor/login", response_class=HTMLResponse)
+async def doctor_login(request: Request, name: str = Form(...)):
+    # Use a case‑insensitive lookup for the doctor's name.
+    doctor = await doctors_collection.find_one({
+        "name": {"$regex": f"^{name.strip()}$", "$options": "i"}
+    })
     if doctor is None:
-        raise HTTPException(status_code=404, detail="Doctor not found")
+        return templates.TemplateResponse("doctor_login.html", {"request": request, "error": "Doctor not found. Please check your name."})
     doctor_id = doctor["doctor_id"]
     return RedirectResponse(url=f"/doctor/{doctor_id}/schedule", status_code=303)
