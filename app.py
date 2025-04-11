@@ -73,7 +73,8 @@ async def register_doctor(
         "about": about,
         "clinic_interests": clinic_interests,
         "education": education,
-        "personal_interests": personal_interests
+        "personal_interests": personal_interests,
+        "availability": True
     }
     await doctors_collection.insert_one(doctor)
     # Create and store the default weekly schedule for this doctor.
@@ -149,3 +150,15 @@ async def doctor_login(request: Request, name: str = Form(...)):
         return templates.TemplateResponse("doctor_login.html", {"request": request, "error": "Doctor not found. Please check your name."})
     doctor_id = doctor["doctor_id"]
     return RedirectResponse(url=f"/doctor/{doctor_id}/schedule", status_code=303)
+
+@app.delete("/doctor/{doctor_id}", response_class=HTMLResponse)
+async def delete_doctor(doctor_id: int):
+    # Delete the doctor document
+    doctor_result = await doctors_collection.delete_one({"doctor_id": doctor_id})
+    # Delete the associated schedule document
+    schedule_result = await schedules_collection.delete_one({"doctor_id": doctor_id})
+
+    if doctor_result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+
+    return HTMLResponse(f"Doctor with ID {doctor_id} and their schedule have been deleted.")
