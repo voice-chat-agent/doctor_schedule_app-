@@ -21,6 +21,12 @@
   </style>
 </head>
 <body>
+  <!-- LOGOUT BUTTON -->
+  <form action="/doctor/logout" method="get" style="text-align: right; margin: 1rem;">
+    <button type="submit">Logout</button>
+  </form>
+
+  <h1>Schedule for Dr. {{ doctor["name"] }} ({{ doctor["specialty"] }})</h1>
   <h1>Schedule for Dr. {{ doctor["name"] }} ({{ doctor["specialty"] }})</h1>
   
   <h2>Doctor Details</h2>

@@ -50,6 +50,19 @@ async def home(request: Request):
 async def doctor_registration_form(request: Request):
     return templates.TemplateResponse("doctor_registration.html", {"request": request})
 
+
+
+# … your existing imports and routes …
+
+@app.get("/doctor/logout")
+async def doctor_logout():
+    """
+    Simple logout endpoint.
+    (If you later add session cookies, you can clear them here.)
+    """
+    return RedirectResponse(url="/doctor/login", status_code=303)
+
+
 @app.post("/register", response_class=HTMLResponse)
 async def register_doctor(
     request: Request,
