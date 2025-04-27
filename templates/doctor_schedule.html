@@ -1,73 +1,110 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Doctor Schedule</title>
+  <meta charset="UTF-8">
+  <title>Dr. {{ doctor.name }}’s Dashboard</title>
   <style>
-    .slot-card {
-      display: inline-block;
-      border: 1px solid #333;
-      padding: 10px;
-      margin: 5px;
-      width: 120px;
-      text-align: center;
-      border-radius: 5px;
-    }
-    .available {
-      background-color: #d4edda;
-    }
-    .not-available {
-      background-color: #f8d7da;
-    }
+    body { font-family: Arial, sans-serif; margin: 2rem; background: #f9f9f9; }
+    header { display: flex; justify-content: space-between; align-items: center; }
+    header h1 { margin: 0; }
+    .logout-btn { background: #dc3545; color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 4px; cursor: pointer; }
+    .card { background: #fff; border: 1px solid #ddd; border-radius: 5px; padding: 1rem; margin-bottom: 1rem; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .field { margin: 0.5rem 0; }
+    .field span { font-weight: bold; }
+    .status { font-size: 1.1rem; margin-bottom: 1rem; }
+    .avail-toggle button { padding: 0.5rem 1rem; border: none; border-radius: 4px; cursor: pointer; color: #fff; }
+    .btn-true { background: #28a745; }
+    .btn-false { background: #ffc107; color: #212529; }
   </style>
 </head>
 <body>
-  <!-- LOGOUT BUTTON -->
-  <form action="/doctor/logout" method="get" style="text-align: right; margin: 1rem;">
-    <button type="submit">Logout</button>
-  </form>
 
-  <h1>Schedule for Dr. {{ doctor["name"] }} ({{ doctor["specialty"] }})</h1>
-  <h1>Schedule for Dr. {{ doctor["name"] }} ({{ doctor["specialty"] }})</h1>
-  
-  <h2>Doctor Details</h2>
-  <ul>
-    <li><strong>About:</strong> {{ doctor["about"] }}</li>
-    <li><strong>Clinic Interests:</strong> {{ doctor["clinic_interests"] }}</li>
-    <li><strong>Education:</strong> {{ doctor["education"] }}</li>
-    <li><strong>Personal Interests:</strong> {{ doctor["personal_interests"] }}</li>
-  </ul>
-  
-  <h2>Schedule for {{ day|capitalize }}</h2>
-  <!-- Dropdown to switch between weekdays -->
-  <form method="get" action="/doctor/{{ doctor['doctor_id'] }}/schedule">
-    <label for="day">Select Day:</label>
-    <select name="day" id="day">
-      <option value="monday" {% if day == 'monday' %}selected{% endif %}>Monday</option>
-      <option value="tuesday" {% if day == 'tuesday' %}selected{% endif %}>Tuesday</option>
-      <option value="wednesday" {% if day == 'wednesday' %}selected{% endif %}>Wednesday</option>
-      <option value="thursday" {% if day == 'thursday' %}selected{% endif %}>Thursday</option>
-      <option value="friday" {% if day == 'friday' %}selected{% endif %}>Friday</option>
-      <option value="saturday" {% if day == 'saturday' %}selected{% endif %}>Saturday</option>
-      <option value="sunday" {% if day == 'sunday' %}selected{% endif %}>Sunday</option>
-    </select>
-    <button type="submit">View</button>
-  </form>
+  <!-- Header + Logout -->
+  <header>
+    <h1>Dr. {{ doctor.name }} ({{ doctor.specialty }})</h1>
+    <form action="/doctor/logout" method="get">
+      <button class="logout-btn" type="submit">Logout</button>
+    </form>
+  </header>
 
-  <h3>Time Slots</h3>
-  <ul style="list-style: none; padding: 0;">
-    {% for ts in schedule %}
-      <li class="slot-card {{ 'available' if ts['available'] else 'not-available' }}">
-        <p><strong>{{ ts['slot'] }}</strong></p>
-        <p>Status: {{ "Available" if ts['available'] else "Not available" }}</p>
-        <form action="/doctor/{{ doctor['doctor_id'] }}/schedule/toggle" method="post">
-          <!-- Include the selected day so the toggle works for the correct weekday -->
-          <input type="hidden" name="day" value="{{ day }}">
-          <input type="hidden" name="slot" value="{{ ts['slot'] }}">
-          <input type="hidden" name="available" value="{{ 'false' if ts['available'] else 'true' }}">
-          <button type="submit">Toggle</button>
-        </form>
-      </li>
-    {% endfor %}
-  </ul>
+  <!-- Profile -->
+  <div class="card">
+    <h2>Profile</h2>
+    <div class="field"><span>About:</span> {{ doctor.about }}</div>
+    <div class="field"><span>Languages:</span> {{ doctor.languages | join(', ') }}</div>
+    <div class="field"><span>Education:</span> {{ doctor.education }}</div>
+    <div class="field"><span>Clinic Interests:</span> {{ doctor.clinic_interests }}</div>
+    <div class="field"><span>Personal Interests:</span> {{ doctor.personal_interests }}</div>
+  </div>
+
+  <!-- Availability Toggle -->
+  <div class="card">
+    <h2>Overall Availability</h2>
+    <p class="status">
+      Current status: <strong>{{ "Available" if doctor.availability else "Not Available" }}</strong>
+    </p>
+    <form class="avail-toggle" action="/doctor/{{ doctor.doctor_id }}/availability" method="post">
+      <input type="hidden" name="available" value="{{ 'false' if doctor.availability else 'true' }}">
+      <button type="submit" class="{{ 'btn-true' if not doctor.availability else 'btn-false' }}">
+        {{ "Set Available" if not doctor.availability else "Set Not Available" }}
+      </button>
+    </form>
+  </div>
+
+  <!-- Appointments -->
+  <div class="card" id="appointments-container">
+    <h2>Appointments</h2>
+
+    {% if appointments %}
+      {% for appt in appointments %}
+        <div class="card">
+          {% if appt.full_name %}
+            <div class="field"><span>Patient:</span> {{ appt.full_name }}</div>
+            <div class="field"><span>Age:</span> {{ appt.age }}</div>
+            <div class="field"><span>Gender:</span> {{ appt.gender }}</div>
+            <div class="field"><span>Contact:</span> {{ appt.contact_number }}</div>
+            <div class="field"><span>Date:</span> {{ appt.date }}</div>
+            <div class="field"><span>Time:</span> {{ appt.time }}</div>
+            <div class="field"><span>Concern:</span> {{ appt.concern }}</div>
+          {% else %}
+            <div class="field"><span>Patient:</span> {{ appt.patient_name }}</div>
+            <div class="field"><span>Date:</span> {{ appt.date }}</div>
+            <div class="field"><span>Time:</span> {{ appt.time }}</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    {% else %}
+      <p>No appointments scheduled.</p>
+    {% endif %}
+  </div>
+
+  <!-- Real-time updates via SSE -->
+  <script>
+    const evtSource = new EventSource("/doctor/{{ doctor.doctor_id }}/appointments/stream");
+    evtSource.onmessage = e => {
+      const appt = JSON.parse(e.data);
+      const container = document.getElementById("appointments-container");
+      const card = document.createElement("div");
+      card.className = "card";
+      if (appt.full_name) {
+        card.innerHTML = `
+          <div class="field"><span>Patient:</span> ${appt.full_name}</div>
+          <div class="field"><span>Age:</span> ${appt.age}</div>
+          <div class="field"><span>Gender:</span> ${appt.gender}</div>
+          <div class="field"><span>Contact:</span> ${appt.contact_number}</div>
+          <div class="field"><span>Date:</span> ${appt.date}</div>
+          <div class="field"><span>Time:</span> ${appt.time}</div>
+          <div class="field"><span>Concern:</span> ${appt.concern}</div>
+        `;
+      } else {
+        card.innerHTML = `
+          <div class="field"><span>Patient:</span> ${appt.patient_name}</div>
+          <div class="field"><span>Date:</span> ${appt.date}</div>
+          <div class="field"><span>Time:</span> ${appt.time}</div>
+        `;
+      }
+      container.insertBefore(card, container.children[1]);
+    };
+  </script>
 </body>
 </html>

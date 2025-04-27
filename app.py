@@ -6,8 +6,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from dotenv import load_dotenv
 
-from db.mongodb import connect_mongo, get_db
+import asyncio, json
+from fastapi.responses import StreamingResponse
 
+from db.mongodb import connect_mongo, get_db
+from typing import List
 load_dotenv()
 connect_mongo()
 
@@ -18,6 +21,7 @@ db = get_db()
 doctors_collection = db["doctors"]
 # Each doctor’s schedule document will store a weekly template.
 schedules_collection = db["schedules"]
+appointments_collection = db["appointments"]
 
 def get_default_slots():
     """
@@ -50,7 +54,69 @@ async def home(request: Request):
 async def doctor_registration_form(request: Request):
     return templates.TemplateResponse("doctor_registration.html", {"request": request})
 
+@app.get("/doctor/{doctor_id}/appointments/stream")
+async def appointment_stream(doctor_id: int):
+    # Look up name once
+    doctor = await doctors_collection.find_one({"doctor_id": doctor_id})
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+    name = doctor["name"]
 
+    async def event_generator():
+        pipeline = [
+            {"$match": {
+                "operationType": "insert",
+                "fullDocument.doctor": name
+            }}
+        ]
+        async with appointments_collection.watch(pipeline) as stream:
+            async for change in stream:
+                doc = change["fullDocument"]
+                # Normalize into one payload
+                payload = {
+                    "date": doc.get("date"),
+                    "time": doc.get("time"),
+                    **(
+                        {
+                            "full_name":      doc["full_name"],
+                            "age":            doc["age"],
+                            "gender":         doc["gender"],
+                            "contact_number": doc["contact_number"],
+                            "specialty":      doc["specialty"],
+                            "concern":        doc["concern"],
+                        }
+                        if "full_name" in doc else
+                        {"patient_name": doc["patient_name"]}
+                    )
+                }
+                yield f"data: {json.dumps(payload)}\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+
+@app.get("/doctor/{doctor_id}/schedule", response_class=HTMLResponse)
+async def doctor_schedule_page(request: Request, doctor_id: int):
+    # 1) Fetch the doctor document
+    doctor = await doctors_collection.find_one({"doctor_id": doctor_id})
+    if not doctor:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+
+    # 2) Fetch appointments by the doctor’s name
+    name = doctor["name"]
+    appointments = await appointments_collection \
+        .find({"doctor": name}) \
+        .to_list(length=None)
+
+    # 3) Render the template
+    return templates.TemplateResponse(
+        "doctor_schedule.html",
+        {
+            "request":      request,
+            "doctor":       doctor,
+            "appointments": appointments,
+        }
+    )
 
 # … your existing imports and routes …
 
@@ -98,6 +164,18 @@ async def register_doctor(
         f"Doctor {name} registered with ID {doctor_id}. "
         f"<a href='/doctor/{doctor_id}/schedule'>Manage Schedule</a>"
     )
+
+
+@app.post("/doctor/{doctor_id}/availability", response_class=HTMLResponse)
+async def set_availability(doctor_id: int, available: str = Form(...)):
+    available_bool = available.lower() == "true"
+    result = await doctors_collection.update_one(
+        {"doctor_id": doctor_id},
+        {"$set": {"availability": available_bool}}
+    )
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="Doctor not found")
+    return RedirectResponse(url=f"/doctor/{doctor_id}/schedule", status_code=303)
 
 @app.get("/doctor/{doctor_id}/schedule", response_class=HTMLResponse)
 async def doctor_schedule_page(request: Request, doctor_id: int, day: str = None):
